@@ -1,32 +1,3 @@
-<!--
-SYNC IMPACT REPORT (scratch — remove before committing the amended constitution)
-
-Version change: [CONSTITUTION_VERSION] (unfilled template) → 1.0.0
-Bump rationale: initial ratification. The file previously held only core-template
-placeholders and governed nothing; this is the first version with binding content.
-
-Modified principles (placeholder → concrete):
-  [PRINCIPLE_1_NAME] → I. Cross-Repo Contract Fidelity (NON-NEGOTIABLE)
-  [PRINCIPLE_2_NAME] → II. Source Semantics Stay Behind the Ingestion Boundary
-  [PRINCIPLE_3_NAME] → III. Assume Redelivery, Prove Idempotency
-  [PRINCIPLE_4_NAME] → IV. Lag Is the Health Signal
-  [PRINCIPLE_5_NAME] → V. Real Stack In, Stubs Out
-
-Added sections:
-  [SECTION_2_NAME]   → Technology & Configuration Constraints
-  [SECTION_3_NAME]   → Development Workflow & Quality Gates
-
-Removed sections: none.
-
-Follow-up TODOs: none. No placeholder tokens retained.
-
-Consistency notes:
-  - Principle I defers to ../pulse-infra/docs/stack-contract.md as the naming
-    authority; that file is external and may change independently of this one.
-  - Principle V's "no build/test command yet" reality means Section 3 gates are
-    written to activate when the first manifest lands, not to block before it.
--->
-
 # pulse-conflux Constitution
 
 ## Core Principles

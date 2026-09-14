@@ -103,11 +103,13 @@ disabled auto-topic-creation — are exactly what a mock reproduces incorrectly.
 
 ## Technology & Configuration Constraints
 
-- The runtime, framework, and package manager are UNDECIDED. The stock GitHub Node
-  `.gitignore` signals JS/TS but is not a decision; whatever lands first MUST be recorded
-  in `CLAUDE.md` together with the real build, lint, test, and single-test commands.
-- No build, test, or lint command MUST be invented or documented before a manifest exists
-  to back it.
+- The runtime is **Go** (decided 2026-09-14 with feature 001; `go.mod` declares `go 1.25`).
+  Dependencies MUST stay minimal and MUST match `pulse-gateway`'s choices where an
+  equivalent exists, so producer and consumer share one dialect: `go-redis/v9`,
+  `prometheus/client_golang`, `godotenv`, and stdlib `log/slog` and `net/http`.
+- Build, lint, test, and single-test commands MUST be recorded in `CLAUDE.md` and MUST stay
+  accurate as they change. `go test ./...` MUST pass with no infrastructure running;
+  anything needing the local stack MUST sit behind the `integration` build tag.
 - `.env` and `.env.*` are gitignored and MUST stay untracked. `.env.example` ships
   placeholder values only. Credentials and secrets MUST NOT appear in source, fixtures, or
   test data.
@@ -149,4 +151,4 @@ Compliance is reviewed at every pull request and again whenever a sibling repo p
 contract change. `CLAUDE.md` remains the runtime development guidance for agents working in
 this repo and MUST be kept consistent with this constitution.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-13
+**Version**: 1.1.0 | **Ratified**: 2026-09-13 | **Last Amended**: 2026-09-14

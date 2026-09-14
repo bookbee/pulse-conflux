@@ -46,6 +46,7 @@ Envelope fields, types, and optionality: see [data-model.md](../data-model.md#en
 ## Failure modes to handle
 
 - `BUSYGROUP` on group creation — benign, the group already exists.
-- `NULL` lag from `XINFO GROUPS` — entries were trimmed from under the group; treat as approximate and anomalous (D11).
+- `NULL` lag from `XINFO GROUPS` — caused by `XDEL` tombstones, not by `MAXLEN` trimming; derive from `XLEN` and mark the reading approximate.
+- **Entries trimmed before the group read them** — invisible in `lag`, which keeps reporting a confident (understated) number. Detect it by comparing the group's `last-delivered-id` against the stream's first surviving entry, and treat it as upstream data loss (D11, verified against Redis 7.4).
 - Auth failure or unreachable Redis — back off; never spin hot.
 - Write refusal under `maxmemory-policy noeviction` — the policy is load-bearing and must not be worked around.

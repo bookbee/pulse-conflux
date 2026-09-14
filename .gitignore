@@ -144,3 +144,23 @@ vite.config.ts.timestamp-*
 
 
 .DS_Store
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+# Added with the Go manifest: the template above this line is the stock GitHub
+# Node one and covers none of these. Constitution Section 2 requires .gitignore
+# additions in the same change as a new language surface.
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+/conflux
+/bin/
+coverage.out
+coverage.html
+
+# macOS
+.DS_Store

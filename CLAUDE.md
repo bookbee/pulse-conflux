@@ -2,11 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status
+## Build, test, lint
 
-Scaffold only. Tracked files are `README.md` and `.gitignore`; `.env.example`, `CLAUDE.md` and `.specify/` are untracked. There is **no source, no package manifest, and therefore no build/test/lint command yet** — do not invent one. When the first manifest lands, replace this section with the real build/test/lint invocations, including how to run a single test.
+**Go 1.25** (`go.mod` declares `go 1.25`, deliberately not `pulse-gateway`'s `1.26.2` — matching it would make every local build download a toolchain; see `specs/001-event-agent-runtime/research.md` D2).
 
-The `.gitignore` is the stock GitHub Node template. It signals JS/TS but is NOT evidence of a chosen runtime, framework, or package manager — treat those as undecided.
+```bash
+make build                      # go build -o bin/conflux ./cmd/conflux
+make run                        # go run ./cmd/conflux  (reads .env)
+make test                       # unit tests — MUST stay green with no Docker running
+make test-integration           # needs pulse-infra `full`: (cd ../pulse-infra && make up)
+make test-one NAME=TestFoo      # single test; add PKG=./internal/envelope/... to narrow
+make lint                       # golangci-lint (skips with a notice if not installed)
+make fmt                        # go fmt + go vet
+```
+
+Integration tests sit behind a `//go:build integration` tag so the default suite needs no
+infrastructure. The tagged suite runs against the real local stack, never a fake Redis —
+single-field stream entries, `NULL` group lag and the Lua-dropped log write are exactly what
+a mock reproduces incorrectly.
+
+The `.gitignore` is the stock GitHub Node template with a Go section appended. The Node half
+is historical and is NOT evidence of a JS/TS surface.
+
+## Layout
+
+`cmd/conflux` wires; `internal/ingest` is the ingestion boundary and **the only package
+permitted to import `go-redis`** — `test/integration/boundary_test.go` fails the build if that
+is violated. `internal/agent` hosts the runtime, `internal/dispatch` the destinations and retry
+policy, `internal/housekeeping` the periodic agents, `internal/observability` logging, metrics
+and the operational endpoints.
 
 ## What this service is
 

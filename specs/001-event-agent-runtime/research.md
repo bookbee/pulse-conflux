@@ -110,15 +110,19 @@ Thirteen decisions. Evidence came from the sibling repos (`pulse-gateway` source
 
 ---
 
-## D11 — Lag measurement: `XINFO GROUPS` lag, with an explicit fallback
+## D11 — Lag measurement: `XINFO GROUPS`, plus an explicit trim check
 
-**Decision**: Per-stream lag comes from the `lag` field of `XINFO GROUPS`; when it reports `NULL` (which Redis does after entries are trimmed away from under a group), fall back to `XLEN` minus `entries-read` and mark the reading as approximate. List lag is `LLEN`.
+**Decision**: Per-stream lag comes from the `lag` field of `XINFO GROUPS`. Separately, and on every reading, compare the group's `last-delivered-id` against the stream's first surviving entry: if the group's position is older, entries were trimmed away before it read them, and the reading is marked approximate. List lag is `LLEN`.
 
-**Rationale**: FR-022 makes lag first-class, and the server already computes it. The `NULL` case is not an edge case here: local caps are 10k with approximate *and* age-based trimming, so a lagging group will have entries trimmed out from under it — exactly the spec's "stream trimmed while an agent is behind" edge case. A reading that silently reports zero there would invert the signal, so the approximate flag propagates to `/readyz` and into the anomaly.
+**Corrected 2026-09-14 against Redis 7.4 on the local stack.** This decision originally said NULL lag was the trim signal. Testing showed that is wrong in both directions, and the correction matters because the original design would have reported a healthy-looking number over real data loss:
+
+- **`MAXLEN` trimming does NOT make lag NULL.** Redis keeps computing it. Trimming a 5-entry stream to 2 with a group still at `0-0` reports `lag 2` — a confident number that silently omits the 3 entries destroyed unread.
+- **What does make lag NULL is `XDEL` tombstones**, which the gateway never creates but an operator might. That path is still handled, and still falls back to `XLEN` marked approximate.
+- **The condition the spec actually cares about** — "the stream is trimmed while an agent is behind" — is invisible in `lag` and needs the position comparison above.
+
+**Rationale**: FR-022 makes lag first-class, and the server computes the ordinary case well. The trim case is not an edge case here: local caps are 10k with approximate *and* age-based trimming, so a lagging group WILL have entries trimmed from under it. A reading that trusts `lag` alone there would report "slightly behind" during active data loss, which is worse than no signal at all — it actively misleads. The approximate flag propagates into `/readyz` and raises an `entries_trimmed` anomaly.
 
 **Alternatives considered**: Tracking last-processed ID and diffing against `XLEN` ourselves — duplicates server state and drifts. Time-based lag from `received_at` — useful and cheap to add later as a second gauge, but it measures a different thing and depends on clock agreement between gateway and consumer.
-
----
 
 ## D12 — Agent isolation: goroutine per agent, panic recovery in the runner
 

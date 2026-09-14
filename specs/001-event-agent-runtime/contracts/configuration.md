@@ -10,6 +10,7 @@ Agent ids in `CONFLUX_AGENTS` are uppercased and non-alphanumerics become `_` to
 |---|---|---|
 | `HTTP_ADDR` | `:8090` | The deployment's scrape and probe configuration |
 | `SHUTDOWN_GRACE` | `15s` | How long draining agents may finish in-flight work (FR-006) |
+| `CONFLUX_INSTANCE_ID` | *(defaults to hostname)* | Distinguishes two processes running the same agent set (FR-009a). Appended to every consumer name, so `XAUTOCLAIM` cannot claim entries in flight at another live instance. Containers get a unique hostname automatically; set it explicitly when running two processes on one host |
 
 ## Agent registry
 
@@ -52,6 +53,7 @@ Agent ids in `CONFLUX_AGENTS` are uppercased and non-alphanumerics become `_` to
 | Key | Default | Contracts with |
 |---|---|---|
 | `LAG_THRESHOLD_ENTRIES` | `1000` | `/readyz` degradation and the `lag_threshold` anomaly (FR-025). Note local caps are 10k |
+| `LAG_SUSTAINED_FOR` | `3m` | How long lag must stay above `LAG_THRESHOLD_ENTRIES` before the `lag_threshold` anomaly fires. Gates the anomaly ONLY — `/readyz` degrades immediately, because readiness and alerting answer different questions (FR-025a). Kept under SC-007's five-minute bound: 3m sustained plus up to one `ANOMALY_CHECK_INTERVAL` of latency is a 4m worst case |
 | `DROP_RATE_THRESHOLD` | `0.01` | Fraction of dispatches dropped over the check window (FR-017b) |
 | `ANOMALY_CHECK_INTERVAL` | `1m` | SC-007's five-minute detection bound |
 | `ANOMALY_NOTIFY_COOLDOWN` | `30m` | FR-026 rate limit per anomaly type |

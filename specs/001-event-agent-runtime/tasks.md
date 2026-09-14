@@ -1,6 +1,5 @@
 ---
-
-description: "Task list template for feature implementation"
+description: "Implementation tasks for the Event Agent Runtime feature"
 ---
 
 # Tasks: Event Agent Runtime
@@ -52,8 +51,8 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 - [ ] T012 [P] Define `SourceRef` in `internal/ingest/source.go` with `Name string` (from configuration, never a literal) and `Kind` of `stream` or `list`
 - [ ] T013 Implement the Redis client in `internal/ingest/redis/client.go`: connection, auth, DB selection from existing `REDIS_ADDR`/`REDIS_PASSWORD`/`REDIS_DB` keys, context-aware, with connect backoff that never spins hot
 - [ ] T014 [P] Implement config loading in `internal/config/config.go` using `godotenv`: runtime keys (`HTTP_ADDR`, `SHUTDOWN_GRACE`) and the agent registry keys (`CONFLUX_AGENTS`, `AGENT_<ID>_*`) per contracts/configuration.md. Agent ids uppercase with non-alphanumerics to `_`; ids must be unique after normalisation
-- [ ] T015 [P] Implement config validation in `internal/config/validate.go`: "A missing required key for an **enabled** agent is a startup failure naming the key. A missing key for a disabled agent is ignored"
-- [ ] T016 [P] Write unit tests in `internal/config/config_test.go` for id normalisation, missing-required-key failure naming the key, and the disabled-agent exemption
+- [ ] T015 Implement config validation in `internal/config/validate.go`: "A missing required key for an **enabled** agent is a startup failure naming the key. A missing key for a disabled agent is ignored" (depends on T014)
+- [ ] T016 Write unit tests in `internal/config/config_test.go` for id normalisation, missing-required-key failure naming the key, and the disabled-agent exemption (depends on T014, T015)
 - [ ] T017 Add every new key from contracts/configuration.md to `.env.example` with a comment naming what it contracts with (Constitution Principle I requires this in the same change as the key)
 - [ ] T018 [P] Configure structured logging in `internal/observability/logging.go`: `log/slog` JSON handler, level from `LOG_LEVEL`, standard attributes `agent`, `source`, `component`
 - [ ] T019 [P] Create the Prometheus registry and metric definitions in `internal/observability/metrics.go` for all 14 metrics in contracts/operational-endpoints.md
@@ -81,7 +80,7 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 - [ ] T026 [P] [US1] Unit test in `internal/dispatch/retry_test.go`: the HTTP outcome mapping from contracts/destination-dispatch.md — 2xx delivered; 408/429/5xx retried within budget; "4xx other than 408/429" dropped immediately without retry; timeout retried
 - [ ] T027 [P] [US1] Integration test in `test/integration/stream_dispatch_test.go` (`//go:build integration`): quickstart Scenario 1 — seed three envelopes, assert three stub calls, `conflux_events_processed_total` at 3, and `XPENDING` empty after ack
 - [ ] T028 [P] [US1] Integration test in `test/integration/stream_dispatch_test.go`: seed an envelope with NO `event_header` (an API-key gateway request) and assert it dispatches normally rather than erroring (FR-010)
-- [ ] T029 [P] [US1] Integration test in `test/integration/restart_resume_test.go`: quickstart Scenario 2 — stop mid-stream, restart, assert resumption from the last acknowledged position with no skipped `event_id` and that redelivery is absorbed idempotently
+- [ ] T029 [P] [US1] Integration test in `test/integration/restart_resume_test.go`: quickstart Scenario 2 — stop mid-stream, restart, assert resumption from the last acknowledged position with no skipped `event_id` and that redelivery is absorbed idempotently; then replay the same batch a second time and assert the stub's end state is identical to after the first pass — same set of `Idempotency-Key` values, no additional distinct effects (SC-003)
 
 ### Implementation for User Story 1
 
@@ -112,14 +111,14 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 
 - [ ] T042 [P] [US2] Unit test in `internal/agent/periodic_test.go`: a run that overruns its next due time does not start a second overlapping run, and the skip increments `conflux_agent_runs_total{outcome="skipped_overlap"}`
 - [ ] T043 [P] [US2] Unit test in `internal/agent/runner_test.go`: a panicking agent is recovered, marked `degraded`, and every other agent continues — with the failure attributed to the agent's name
-- [ ] T044 [P] [US2] Integration test in `test/integration/multi_agent_test.go` (`//go:build integration`): two stream agents on the same stream each see every event and neither consumes the other's
+- [ ] T044 [P] [US2] Integration test in `test/integration/multi_agent_test.go` (`//go:build integration`): two stream agents on the same stream each see every event and neither consumes the other's; then add a third agent from configuration while the first two are mid-stream and assert neither pauses, loses position, nor drops throughput during the change (SC-001)
 - [ ] T045 [P] [US2] Integration test in `test/integration/multi_agent_test.go`: an agent disabled via `AGENT_<ID>_ENABLED=false` does not run and the others are unaffected
 
 ### Implementation for User Story 2
 
 - [ ] T046 [US2] Implement the periodic trigger in `internal/agent/periodic.go`: `time.Ticker` at `AGENT_<ID>_INTERVAL` with a `sync/atomic` in-flight guard (research.md D7); count skipped ticks rather than queueing them
 - [ ] T047 [US2] Derive a per-agent consumer group name in `internal/ingest/redis/stream.go` from `REDIS_CONSUMER_GROUP` plus the agent id, so two agents on one stream each get the full event set independently
-- [ ] T048 [US2] Set the per-agent consumer name from `REDIS_CONSUMER_NAME` plus the agent id in `internal/ingest/redis/stream.go`, so pending entries are attributable to a specific agent instance
+- [ ] T048 [US2] Set the per-agent consumer name from `REDIS_CONSUMER_NAME` plus the agent id plus `CONFLUX_INSTANCE_ID` (defaulting to the OS hostname) in `internal/ingest/redis/stream.go`, so pending entries are attributable to a specific agent AND a specific process (FR-009a). Without the instance segment, a rolling restart has two processes sharing one consumer name and reclaim can steal live work
 - [ ] T049 [US2] Add restart backoff and the `degraded` state transition to `internal/agent/runner.go` per the data-model.md state diagram; `recovering` and `degraded` must never propagate to another agent
 - [ ] T050 [US2] Extend `internal/agent/registry.go` to construct both trigger modes from `AGENT_<ID>_MODE` and reject an agent declaring neither or both
 - [ ] T051 [P] [US2] Implement the CEP stub destination in `internal/dispatch/stub/cep.go` posting to `DEST_CEP_URL`
@@ -139,6 +138,7 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 - [ ] T052 [P] [US3] Unit test in `internal/observability/anomaly_test.go`: the `detected → notified → suppressed → cleared → resolved-notified` transitions, `ANOMALY_NOTIFY_COOLDOWN` suppression, the `ANOMALY_MAX_PER_HOUR` ceiling, and exactly one resolved notification
 - [ ] T053 [P] [US3] Integration test in `test/integration/lag_health_test.go` (`//go:build integration`): quickstart Scenario 4 — lag over `LAG_THRESHOLD_ENTRIES` returns `503` from `/readyz` naming the agent and reason, while `/livez` still returns `200`
 - [ ] T054 [P] [US3] Integration test in `test/integration/lag_health_test.go`: seed past the 10k local cap with the agent stopped so entries are trimmed from under the group; assert `XINFO GROUPS` `NULL` lag becomes `conflux_agent_lag_approximate=1`, readiness degrades, and an `entries_trimmed` anomaly is raised — "a reading of zero there would invert the signal"
+- [ ] T083 [P] [US3] Integration test in `test/integration/drop_vs_lag_test.go` (`//go:build integration`): SC-011 — with the destination stub failing continuously, assert `conflux_agent_lag_entries` stays within its normal operating range while `conflux_dispatch_dropped_total` climbs, and that support receives ONE rate-limited `dispatch_drop_rate` anomaly rather than one message per dropped event
 
 ### Implementation for User Story 3
 
@@ -147,7 +147,7 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 - [ ] T057 [P] [US3] Implement `/livez` in `internal/observability/http.go`: `200 OK` body `ok`, never consulting Redis or lag — "a liveness probe that fails on a dependency outage causes a restart loop that fixes nothing"
 - [ ] T058 [US3] Implement `/readyz` in `internal/observability/http.go` returning the JSON shape in contracts/operational-endpoints.md, with `503` and `"status": "degraded"` when Redis is unreachable, any agent exceeds its lag threshold, any agent is `degraded`, or any lag reading is approximate
 - [ ] T059 [P] [US3] Serve `/metrics` in `internal/observability/http.go` on `HTTP_ADDR` via `promhttp`
-- [ ] T060 [US3] Implement the anomaly detector in `internal/observability/anomaly.go` for `lag_threshold`, `dispatch_drop_rate`, `source_unavailable`, and `entries_trimmed`, running every `ANOMALY_CHECK_INTERVAL` to meet SC-007's five-minute detection bound
+- [ ] T060 [US3] Implement the anomaly detector in `internal/observability/anomaly.go` for `lag_threshold`, `dispatch_drop_rate`, `source_unavailable`, and `entries_trimmed`, running every `ANOMALY_CHECK_INTERVAL`; `lag_threshold` fires only after lag has stayed above `LAG_THRESHOLD_ENTRIES` for `LAG_SUSTAINED_FOR` (FR-025a — the gate is on notification, not on `/readyz`), keeping worst-case detection inside SC-007's five-minute bound
 - [ ] T061 [US3] Implement the notification rate limiter in `internal/observability/anomaly.go` using `ANOMALY_NOTIFY_COOLDOWN` and `ANOMALY_MAX_PER_HOUR`, with exactly one notification when a condition clears
 - [ ] T062 [P] [US3] Implement the email stub in `internal/dispatch/stub/email.go`: a sink while `EMAIL_ENABLED=false`, addressing `SUPPORT_EMAIL_TO` from `SUPPORT_EMAIL_FROM` via `SMTP_ADDR`, carrying anomaly notifications rather than envelopes
 - [ ] T063 [US3] Wire `conflux_anomalies_active` and `conflux_notifications_sent_total` (including suppressed-by-cooldown) in `internal/observability/anomaly.go`
@@ -173,7 +173,7 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 
 - [ ] T067 [US4] Implement destructive list consumption in `internal/ingest/redis/list.go`: blocking pop from `REDIS_LIST_LOGS`, with `Ack` as a no-op "because the pop already consumed it" and `Nack` recording the loss since "nothing can restore it". The agent runs in **continuous** mode (US1's trigger, T033), never on the summary interval — FR-018c: "letting the list fill makes this service the cause of upstream log loss"
 - [ ] T068 [US4] Implement pending reclaim in `internal/ingest/redis/pending.go` using `XAUTOCLAIM` with `PENDING_MIN_IDLE` and `PENDING_RECLAIM_BATCH`, following the returned cursor so reclaim is paginated and bounded (research.md D6)
-- [ ] T069 [US4] Implement consumer retirement in `internal/ingest/redis/pending.go`: retire only consumers holding no pending entries and idle beyond `CONSUMER_RETIRE_IDLE`
+- [ ] T069 [US4] Implement consumer retirement in `internal/ingest/redis/pending.go`: retire only consumers holding no pending entries and idle beyond `CONSUMER_RETIRE_IDLE`. This is what keeps per-instance consumer names (FR-009a) from accumulating in the group as instances churn — without it, hostname-derived names grow unbounded across redeploys
 - [ ] T070 [US4] Implement the reclaim agent in `internal/housekeeping/reclaim.go` wiring T068/T069 to the periodic trigger; increment `conflux_entries_reclaimed_total` and populate `conflux_pending_entries`
 - [ ] T071 [US4] Implement log summarization in `internal/housekeeping/summarize.go`: fold drained entries into in-memory counters keyed by clock-aligned `SUMMARY_PERIOD` bucket, emitting one `LogSummary` (`Entry count`, `Breakdown` by gateway and outcome, `Partial`) to `SUMMARY_DESTINATION` and structured output when a bucket closes
 - [ ] T080 [US4] Set `Partial` on any summary whose period spanned a process start in `internal/housekeeping/summarize.go` — a restart loses that period's in-memory accumulation and FR-018b requires the undercount be declared rather than presented as complete
@@ -221,10 +221,10 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 ### Parallel Opportunities
 
 - Setup: T004, T005, T006 together after T003
-- Foundational: T008, T012, T014, T015, T018, T019 together (different files, no shared state)
+- Foundational: T008, T012, T014, T018, T019 together (different files, no shared state)
 - US1: all four test tasks T025-T029 together; T036 alongside T034/T035
 - US2: T042-T045 together; T051 anytime
-- US3: T052-T054 together; T057, T059, T062 together
+- US3: T052-T054 and T083 together; T057, T059, T062 together
 - US4: T064-T066 together
 - Across stories: once Phase 2 checkpoints, US1/US2/US3 can proceed on separate branches; US4 waits on T046
 

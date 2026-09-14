@@ -122,6 +122,7 @@ Draining is not optional and not merely a summarization concern: the log list re
 - **FR-007**: Agents MUST consume from the gateway-written sources named in the cross-repo stack contract, reading the JSON envelope carried in each entry.
 - **FR-008**: Envelope parsing MUST be shared across all sources and entry structures; consumption, acknowledgement, consumer-group lifecycle, pending-entry recovery, and claim logic MUST remain behind the ingestion boundary and MUST NOT be visible to agents' processing or dispatch logic.
 - **FR-009**: The system MUST own its consumer groups end to end — creating them when absent, tracking pending entries, and claiming abandoned ones — because nothing upstream creates them.
+- **FR-009a**: Each process MUST contribute a distinct instance identity to every consumer name it registers, so two instances running the same agent are distinguishable and pending-entry reclaim cannot claim entries that are in flight at another live instance.
 - **FR-010**: The system MUST treat `event_header` as optional, present only for JWT-authenticated gateway requests.
 - **FR-011**: Redelivery MUST be treated as normal operation; every dispatch and every persisted effect MUST be idempotent, keyed on the envelope's event identifier.
 - **FR-012**: An entry that cannot be parsed or processed MUST NOT block progress on the remaining entries, and MUST be recorded in full in structured output together with its source and position, so it can be inspected and replayed by hand while it remains in the source. Since no datastore exists (FR-013), that record is the only trace — it MUST NOT be reduced to a counter.
@@ -144,15 +145,15 @@ Draining is not optional and not merely a summarization concern: the log list re
 - **FR-018b**: Because aggregation is held in memory and no datastore exists (FR-013), a restart mid-period loses that period's accumulated counts. The agent MUST still emit the period's summary and MUST mark it partial rather than presenting an undercount as complete.
 - **FR-019**: A periodic agent MUST reclaim entries left pending by consumers that are no longer active, and MUST NOT disturb entries currently in flight for a live consumer.
 - **FR-020**: Queue upkeep MUST be limited to two things: read-only reporting on the queue this service consumes (entry counts, configured caps, pending-entry counts, consumer liveness), and upkeep of the consumer groups this service itself owns — reclaiming pending entries and retiring consumer names that are no longer active.
-- **FR-020a**: The system MUST NOT delete, trim, expire, rename, or otherwise mutate any queue data outside its own consumer groups. Stream trimming and the log list's expiry belong to the gateway; the eviction policy is deliberately set so writes fail loudly rather than keys vanishing under a consumer, and this service MUST NOT work around that.
-- **FR-021**: No housekeeping action MUST alter a name, key, structure, or limit that the cross-repo stack contract governs.
+- **FR-020a**: The system MUST NOT delete, trim, expire, rename, or otherwise mutate any queue data outside its own consumer groups, nor alter any name, key, structure, or limit that the cross-repo stack contract governs. Stream trimming and the log list's expiry belong to the gateway; the eviction policy is deliberately set so writes fail loudly rather than keys vanishing under a consumer, and this service MUST NOT work around that.
 
 **Observability and alerting**
 
 - **FR-022**: The system MUST measure and expose consumer lag per agent and per source as a first-class signal.
 - **FR-023**: Health and readiness reporting MUST reflect lag, not merely that the process is alive.
 - **FR-024**: Every log line concerning an envelope MUST carry the event identifier and the originating gateway identifier, and logging MUST be structured.
-- **FR-025**: The system MUST detect anomalies — at minimum sustained lag beyond a configured threshold, repeated dispatch failure to a destination, and source unavailability — and notify support by email.
+- **FR-025**: The system MUST detect anomalies — at minimum lag that remains beyond a configured threshold for a configured duration, repeated dispatch failure to a destination, and source unavailability — and notify support by email.
+- **FR-025a**: The lag duration gate MUST apply to notification only. Readiness reporting (FR-023) MUST reflect a threshold breach immediately: an operator checking health asks "are we behind now", while a notification asks "is this worth waking someone for".
 - **FR-026**: Anomaly notifications MUST be rate-limited per anomaly type so a persistent condition produces a bounded number of messages, and MUST be followed by a notification when the condition clears.
 - **FR-027**: Support recipients, thresholds, and rate limits MUST be configurable.
 

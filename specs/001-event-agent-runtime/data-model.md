@@ -61,6 +61,7 @@ A named, independently configured unit of work, built from `AGENT_<ID>_*` config
 | Destinations | `[]Destination` | One or more; all stubbed in this feature |
 | Interval | `time.Duration` | `periodic` only |
 | Batch size / block timeout | `int` / `time.Duration` | `stream` only |
+| Consumer name | `string` | `stream` only. Derived as `REDIS_CONSUMER_NAME` + agent id + instance identity (FR-009a), so it is unique per agent *per process* |
 
 **State transitions**
 

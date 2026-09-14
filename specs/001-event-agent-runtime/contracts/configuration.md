@@ -43,8 +43,9 @@ Agent ids in `CONFLUX_AGENTS` are uppercased and non-alphanumerics become `_` to
 | `PENDING_MIN_IDLE` | `5m` | `XAUTOCLAIM` minimum idle — protects a live consumer's in-flight entries (FR-019) |
 | `PENDING_RECLAIM_BATCH` | `100` | `XAUTOCLAIM COUNT` |
 | `CONSUMER_RETIRE_IDLE` | `24h` | How long a consumer with no pending entries may be idle before retirement |
-| `SUMMARY_PERIOD` | `1h` | Closed bucket size; determines summary identity (FR-018a) |
+| `SUMMARY_PERIOD` | `1h` | Closed bucket size; determines summary identity (FR-018a). This is the **emit** cadence only — the log agent drains continuously regardless (FR-018c) |
 | `SUMMARY_DESTINATION` | *(required if the summary agent is enabled)* | Where summaries are emitted |
+| `SUMMARY_MAX_LIST_DEPTH` | `2000` | Drain target for the log list: exceeding it raises an anomaly, because the gateway refuses log writes at the list's 10k cap (FR-018c) |
 
 ## Anomalies and notification
 

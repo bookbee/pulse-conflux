@@ -71,18 +71,21 @@ A platform operator can see, per agent and per source, how far behind processing
 
 ### User Story 4 - Housekeeping agents keep the queue and logs manageable (Priority: P4)
 
-Scheduled agents summarize the raw event-log entries into a compact form and perform routine upkeep of the queue this service owns — reclaiming entries left pending by a consumer that died, and retiring consumers that no longer exist.
+A continuously running agent drains the raw event-log entries and folds them into a compact summary emitted once per period, while scheduled agents perform routine upkeep of the queue this service owns — reclaiming entries left pending by a consumer that died, and retiring consumers that no longer exist.
 
-**Why this priority**: This is maintenance, not delivery: valuable, but the pipeline works without it and the earlier stories must exist first. Pending-entry reclaim matters only once agents have been running long enough to crash mid-batch.
+Draining is not optional and not merely a summarization concern: the log list refuses new writes once it reaches its cap, so a consumer that falls behind makes the **gateway** start losing logs.
+
+**Why this priority**: This is maintenance, not delivery: valuable, but the pipeline works without it and the earlier stories must exist first. Pending-entry reclaim matters only once agents have been running long enough to crash mid-batch. The log-drain half carries more urgency than its priority suggests — while it is unbuilt, nothing is consuming the log list at all.
 
 **Independent Test**: Leave entries pending under a consumer name, run the housekeeping agent, and confirm the entries are reclaimed and processed while no other consumer's in-flight work is disturbed.
 
 **Acceptance Scenarios**:
 
 1. **Given** entries left pending by a consumer that is gone, **When** the housekeeping agent runs, **Then** those entries are reclaimed and processed, and entries still in flight elsewhere are left alone.
-2. **Given** a period of raw log entries, **When** the summarization agent runs, **Then** it produces a summary covering that period and records which period it covered.
-3. **Given** the summarization agent runs twice over the same period, **When** the second run completes, **Then** it produces a summary identical to the first and the destination's end state is unchanged — the repeat neither double-counts nor adds a second distinct summary.
-4. **Given** a housekeeping action would remove data another repo in the platform depends on, **When** the agent runs, **Then** it does not perform that action.
+2. **Given** the log agent is running, **When** raw log entries arrive, **Then** they are drained continuously and the list stays well below the cap at which the gateway's writes would be refused.
+3. **Given** a summary period closes, **When** the agent emits, **Then** it produces one summary stating the period it covers, and re-emitting that same summary leaves the destination's end state unchanged — identity is the period, so a repeat neither double-counts nor adds a second distinct summary.
+4. **Given** the service restarts mid-period, **When** the period closes, **Then** the summary for that period is emitted marked partial, because the entries consumed before the restart are gone and no datastore holds them.
+5. **Given** a housekeeping action would remove data another repo in the platform depends on, **When** the agent runs, **Then** it does not perform that action.
 
 ---
 
@@ -135,8 +138,10 @@ Scheduled agents summarize the raw event-log entries into a compact form and per
 
 **Housekeeping agents**
 
-- **FR-018**: A periodic agent MUST summarize raw event-log entries into a compact form, stating which period each summary covers, and MUST emit each summary to a configured destination (stubbed in this feature) and to structured output.
-- **FR-018a**: Because no datastore exists (FR-013), duplicate suppression MUST come from deterministic period boundaries rather than from remembered state: recomputing a closed period MUST yield an identical summary, so a repeated run is harmless rather than additive.
+- **FR-018**: A continuously running agent MUST drain raw event-log entries and fold them into a compact summary, emitting one summary per closed period to a configured destination (stubbed in this feature) and to structured output, stating which period it covers.
+- **FR-018c**: That agent MUST drain continuously rather than on the summary interval, keeping the log list below the cap at which the gateway's Lua script refuses writes. A summary cadence MUST NOT determine the drain cadence: letting the list fill makes this service the cause of upstream log loss.
+- **FR-018a**: A summary's identity MUST be its closed period boundary pair, so re-emitting the same summary is absorbed by the destination rather than double-counted. Recomputation is **not** available as a dedup mechanism: the log list is read destructively, so entries are gone once consumed and no second pass over a period is possible.
+- **FR-018b**: Because aggregation is held in memory and no datastore exists (FR-013), a restart mid-period loses that period's accumulated counts. The agent MUST still emit the period's summary and MUST mark it partial rather than presenting an undercount as complete.
 - **FR-019**: A periodic agent MUST reclaim entries left pending by consumers that are no longer active, and MUST NOT disturb entries currently in flight for a live consumer.
 - **FR-020**: Queue upkeep MUST be limited to two things: read-only reporting on the queue this service consumes (entry counts, configured caps, pending-entry counts, consumer liveness), and upkeep of the consumer groups this service itself owns — reclaiming pending entries and retiring consumer names that are no longer active.
 - **FR-020a**: The system MUST NOT delete, trim, expire, rename, or otherwise mutate any queue data outside its own consumer groups. Stream trimming and the log list's expiry belong to the gateway; the eviction policy is deliberately set so writes fail loudly rather than keys vanishing under a consumer, and this service MUST NOT work around that.
@@ -177,7 +182,7 @@ Scheduled agents summarize the raw event-log entries into a compact form and per
 - **SC-005**: With one agent failing continuously, every other agent maintains its normal processing rate and its own position for the duration of the failure.
 - **SC-006**: After an unclean stop, processing resumes from the last acknowledged position with no event skipped and no gap in coverage.
 - **SC-007**: A persistent anomaly produces its first support notification within five minutes of onset and no more than a configured maximum per hour thereafter, followed by exactly one message when it clears.
-- **SC-008**: A day's worth of raw log entries at local-stack volume is summarized within a single scheduled run, and a second run over the same closed period reproduces the identical summary without double-counting.
+- **SC-008**: Under sustained local-stack log volume, the log list never approaches the cap at which the gateway's writes are refused, and exactly one summary is emitted per closed period. A summary re-sent to the destination leaves its end state unchanged, and a summary whose period spanned a restart is marked partial.
 - **SC-009**: Every record the service emits about an event can be joined to the originating gateway's own records using the identifiers the record carries.
 - **SC-010**: No test reaches a real external system: every dispatch in the suite lands on a stub whose calls are asserted.
 - **SC-011**: With a destination failing for a sustained period, the agent's lag stays within its normal operating range — dropped events do not accumulate into a backlog — and the resulting drop rate reaches support as a single rate-limited anomaly rather than one message per event.

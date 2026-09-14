@@ -123,12 +123,15 @@ A `dropped` outcome is the **only** record that the event existed (FR-013 leaves
 
 | Field | Type | Notes |
 |---|---|---|
-| Period start / end | `time.Time` | Closed, deterministic bucket boundaries (FR-018a) |
+| Period start / end | `time.Time` | Closed, clock-aligned bucket boundaries |
 | Entry count | `int64` | |
 | Breakdown | `map[string]int64` | By gateway, by outcome |
 | Generated at | `time.Time` | |
+| Partial | `bool` | True when the process restarted mid-period, so counts undercount the real volume (FR-018b) |
 
-Identity is the period boundary pair, not the generation time. Recomputing a closed period yields a byte-identical summary, which is what makes a repeated run harmless without any remembered state (SC-008).
+Identity is the period boundary pair, not the generation time — that is what lets a re-sent summary be absorbed rather than double-counted (FR-018a).
+
+**Recomputation is not possible here, and the model must not imply it is.** The log list is read destructively: once an entry is popped it is gone, so there is no second pass over a closed period. Counts accumulate in memory as entries are drained, which is also why `Partial` exists — a restart loses the current period's accumulation and no datastore holds it (FR-013).
 
 ---
 

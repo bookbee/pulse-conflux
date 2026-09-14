@@ -32,7 +32,9 @@ Envelope fields, types, and optionality: see [data-model.md](../data-model.md#en
 - **That entries persist.** Streams trim to an approximate `MAXLEN` and also age-trim (`StreamRetentionSeconds` in the producer). The list's Lua script **drops writes outright** at its cap and returns `LOGS_LIST_FULL`. An entry can vanish before it is read.
 - **That a consumer group exists.** The gateway only `XADD`s. This service issues `XGROUP CREATE <key> <group> $ MKSTREAM` and owns every pending entry and claim from then on (FR-009).
 - **That falling behind slows the producer.** Neither destination applies backpressure. Lag means loss upstream, which is why lag is the health signal (FR-022).
-- **That the list can be shared.** Reading a list is destructive; a second consumer competes for entries. This service is the sole consumer of `ingestion-logs`.
+- **That the list can be shared.** Reading a list is destructive; a second consumer competes for entries. This service is the sole consumer of `ingestion-logs`. Destructive reads also mean **no entry can be read twice** — there is no re-reading a period to recompute anything.
+- **That the list's cap trims like a stream's.** It does not. The Lua script checks `LLEN` first and returns `LOGS_LIST_FULL` *instead of* pushing, so at 10k entries the **gateway's write is refused** — old entries are never evicted to make room. A slow consumer here causes upstream log loss directly.
+- **That the 120s TTL expires entries.** It does not. `EXPIRE` is re-issued on the key on *every* push, so the TTL is sliding: the list survives as long as writes keep arriving, and the whole key — unread entries included — disappears after 120 seconds of silence.
 
 ## Acknowledgement
 

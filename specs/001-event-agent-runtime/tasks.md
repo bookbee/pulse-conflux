@@ -158,24 +158,27 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 
 ## Phase 6: User Story 4 - Housekeeping agents keep the queue and logs manageable (Priority: P4)
 
-**Goal**: Scheduled agents summarize the log list and reclaim abandoned pending entries, touching nothing outside this service's own consumer groups.
+**Goal**: A continuous agent drains the log list and emits one summary per closed period; scheduled agents reclaim abandoned pending entries — all of it touching nothing outside this service's own consumer groups.
 
-**Independent Test**: Leave entries pending under a dead consumer name, run the housekeeping agent, and confirm they are reclaimed and processed while a live consumer's in-flight entries and every other key are untouched.
+**Independent Test**: Two halves, each testable alone. (1) Seed the log list under sustained write volume and confirm the drain keeps its depth below `SUMMARY_MAX_LIST_DEPTH` while one summary is emitted per closed period. (2) Leave entries pending under a dead consumer name and confirm they are reclaimed while a live consumer's in-flight entries and every other key are untouched.
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T064 [P] [US4] Unit test in `internal/housekeeping/summarize_test.go`: recomputing a closed period yields a byte-identical summary — "Identity is the period boundary pair, not the generation time"
+- [ ] T064 [P] [US4] Unit test in `internal/housekeeping/summarize_test.go`: exactly one summary is emitted per closed period, its identity is the period boundary pair so a re-send is absorbed rather than double-counted (FR-018a), and a period spanning a simulated restart is emitted with `Partial` set (FR-018b). Do NOT test recomputation — destructive list reads make a second pass over a period impossible
 - [ ] T065 [P] [US4] Integration test in `test/integration/housekeeping_test.go` (`//go:build integration`): quickstart Scenario 5 — stage pending entries under a killed consumer, wait out `PENDING_MIN_IDLE`, run reclaim, assert they are processed and a live consumer's in-flight entries are untouched
 - [ ] T066 [P] [US4] Integration test in `test/integration/housekeeping_test.go`: snapshot the keyspace before and after a full housekeeping cycle and assert no difference and unchanged `XLEN` (SC-012, FR-020a)
+- [ ] T082 [P] [US4] Integration test in `test/integration/list_consume_test.go` (`//go:build integration`): the log-list ingestion path end to end — push entries with the gateway's Lua semantics, assert continuous draining keeps `LLEN` below `SUMMARY_MAX_LIST_DEPTH`, that a `LOGS_LIST_FULL` refusal is observable when the drain is stopped, and that one summary is emitted per closed period. The constitution requires each new ingestion path to arrive with an integration test against the local stack
 
 ### Implementation for User Story 4
 
-- [ ] T067 [US4] Implement destructive list consumption in `internal/ingest/redis/list.go`: blocking pop from `REDIS_LIST_LOGS`, with `Ack` as a no-op "because the pop already consumed it" and `Nack` recording the loss since "nothing can restore it"
+- [ ] T067 [US4] Implement destructive list consumption in `internal/ingest/redis/list.go`: blocking pop from `REDIS_LIST_LOGS`, with `Ack` as a no-op "because the pop already consumed it" and `Nack` recording the loss since "nothing can restore it". The agent runs in **continuous** mode (US1's trigger, T033), never on the summary interval — FR-018c: "letting the list fill makes this service the cause of upstream log loss"
 - [ ] T068 [US4] Implement pending reclaim in `internal/ingest/redis/pending.go` using `XAUTOCLAIM` with `PENDING_MIN_IDLE` and `PENDING_RECLAIM_BATCH`, following the returned cursor so reclaim is paginated and bounded (research.md D6)
 - [ ] T069 [US4] Implement consumer retirement in `internal/ingest/redis/pending.go`: retire only consumers holding no pending entries and idle beyond `CONSUMER_RETIRE_IDLE`
 - [ ] T070 [US4] Implement the reclaim agent in `internal/housekeeping/reclaim.go` wiring T068/T069 to the periodic trigger; increment `conflux_entries_reclaimed_total` and populate `conflux_pending_entries`
-- [ ] T071 [US4] Implement log summarization in `internal/housekeeping/summarize.go` over closed `SUMMARY_PERIOD` buckets, producing `LogSummary` with `Entry count` and a `Breakdown` by gateway and outcome, emitted to `SUMMARY_DESTINATION` and to structured output
+- [ ] T071 [US4] Implement log summarization in `internal/housekeeping/summarize.go`: fold drained entries into in-memory counters keyed by clock-aligned `SUMMARY_PERIOD` bucket, emitting one `LogSummary` (`Entry count`, `Breakdown` by gateway and outcome, `Partial`) to `SUMMARY_DESTINATION` and structured output when a bucket closes
+- [ ] T080 [US4] Set `Partial` on any summary whose period spanned a process start in `internal/housekeeping/summarize.go` — a restart loses that period's in-memory accumulation and FR-018b requires the undercount be declared rather than presented as complete
 - [ ] T072 [US4] Implement read-only queue reporting in `internal/housekeeping/report.go`: entry counts, configured caps, pending counts, consumer liveness — reporting only
+- [ ] T081 [US4] Raise a `log_list_depth` anomaly in `internal/observability/anomaly.go` when `LLEN` exceeds `SUMMARY_MAX_LIST_DEPTH`, with the detail naming the 10k cap at which the gateway's writes are refused — the drain falling behind is upstream data loss, not a local slowdown
 - [ ] T073 [US4] Add a guard test in `internal/housekeeping/guard_test.go` asserting no code path issues a delete, trim, expire, or rename outside this service's own consumer groups (FR-020a); "Stream trimming and the log list's expiry belong to the gateway"
 
 **Checkpoint**: All four stories functional and independently testable.
@@ -207,7 +210,7 @@ Single Go module at repository root: `cmd/conflux/`, `internal/`, `test/integrat
 - **US1 (P1)**: Foundational only. No dependency on other stories — this is the MVP
 - **US2 (P2)**: Foundational only. Reuses US1's dispatch chain but is independently testable with a periodic agent that dispatches nothing
 - **US3 (P3)**: Foundational only. Needs a running agent to report lag *for*; use US1's, or a stub agent
-- **US4 (P4)**: Foundational, plus US2's periodic trigger (T046) — housekeeping agents are periodic by definition. This is the one genuine cross-story dependency
+- **US4 (P4)**: Foundational, plus **both** triggers — US1's continuous trigger (T033) for the log drain and US2's periodic trigger (T046) for reclaim and for closing summary buckets. This is the one genuine cross-story dependency, and it widened when summarization moved to continuous drain
 
 ### Within Each User Story
 
@@ -272,6 +275,7 @@ After Phase 2 checkpoints: Developer A takes US1, B takes US3 (against a stub ag
 ## Notes
 
 - [P] tasks = different files, no dependencies
+- Task ids are stable identifiers, not a strict execution sequence: T080-T082 were added during `/speckit-analyze` remediation and belong to Phase 6 where they appear, not after T079
 - Every task cites the contract, research decision, or data-model rule it implements — follow the link rather than re-deciding at implementation time
 - Verify tests fail before implementing
 - Commit after each task or logical group; the constitution requires any change touching a cross-repo name to cite `stack-contract.md` and name the affected sibling repos

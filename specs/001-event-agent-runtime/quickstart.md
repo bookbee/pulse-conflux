@@ -101,7 +101,9 @@ diff /tmp/keys-before.txt /tmp/keys-after.txt   # expect no difference
 
 To stage abandoned entries: read with `XREADGROUP` under a consumer name, do not ack, kill the reader, wait out `PENDING_MIN_IDLE`, then run the reclaim agent.
 
-**Summary determinism**: run the summary agent twice over the same closed period. The second summary must be identical to the first — same bucket boundaries, same counts (FR-018a, SC-008).
+**Log drain and summaries**: with the log agent running, push entries into `ingestion-logs` under sustained volume and watch `LLEN` stay below `SUMMARY_MAX_LIST_DEPTH` — the drain is continuous, not on the summary interval, because the gateway's script **refuses** log writes at the 10k cap rather than trimming to make room (FR-018c). Stop the agent and keep pushing to see `LOGS_LIST_FULL` come back: that is upstream loss this service caused.
+
+Expect one summary per closed `SUMMARY_PERIOD`, carrying its period boundaries as identity; re-sending one leaves the destination unchanged (FR-018a). Restart the service mid-period and confirm that period's summary is emitted with `partial` set — the in-memory counts before the restart are gone and no datastore holds them (FR-018b). Do **not** expect to verify a summary by recomputing it: the list is read destructively, so a period cannot be read twice.
 
 ---
 
